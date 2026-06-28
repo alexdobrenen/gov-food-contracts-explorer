@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gov Food Contract Explorer",
+  title: "Gov Food Contracts Explorer",
   description: "Explore federal food contract opportunities and spending data",
 };
 

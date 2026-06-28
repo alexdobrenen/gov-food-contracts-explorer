@@ -15,7 +15,6 @@ import {
   FOOD_NAICS_CODES,
   FOOD_PSC_CODES,
   NAICS_LABELS,
-  awardCount,
   searchAwards,
   searchRecipients,
   spendingByCategory,
@@ -27,9 +26,6 @@ interface SpendingResult {
   amount: number;
   name: string;
   code?: string;
-  count?: number;
-  award_count?: number;
-  transaction_count?: number;
 }
 
 const BREAKDOWN_LIMIT = 15;
@@ -88,15 +84,6 @@ function formatTooltipAmount(value: unknown): string {
   return `$${formatAmount(Number.isFinite(amount) ? amount : 0)}`;
 }
 
-function getCount(row: SpendingResult) {
-  return row.count ?? row.award_count ?? row.transaction_count;
-}
-
-function getAwardTotal(response: { results?: Record<string, number> }) {
-  const results = response.results || {};
-  return Object.values(results).reduce((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
-}
-
 function getPscLabel(code: string) {
   return FOOD_PSC_CODES[code] || code;
 }
@@ -128,36 +115,6 @@ function buildFilters({
     agencyNames: agencies,
     recipientNames: recipients,
   };
-}
-
-function withPsc(filters: SpendingFilters, code: string): SpendingFilters {
-  return { ...filters, pscCodes: [code] };
-}
-
-function withAgency(filters: SpendingFilters, name: string): SpendingFilters {
-  return { ...filters, agencyNames: [name] };
-}
-
-function withRecipient(filters: SpendingFilters, name: string): SpendingFilters {
-  return { ...filters, recipientNames: [name] };
-}
-
-async function addCounts(
-  rows: SpendingResult[],
-  getFilters: (row: SpendingResult) => SpendingFilters
-) {
-  const counts = await Promise.all(
-    rows.map((row) =>
-      awardCount(getFilters(row))
-        .then((response) => getAwardTotal(response))
-        .catch(() => null)
-    )
-  );
-
-  return rows.map((row, index) => ({
-    ...row,
-    count: counts[index] ?? undefined,
-  }));
 }
 
 export function FederalSpending() {
@@ -212,11 +169,10 @@ export function FederalSpending() {
             </label>
             <RecipientSearch
               selected={recipientFilter}
-              onAdd={(name) => {
-                if (!recipientFilter.includes(name)) {
-                  setRecipientFilter((c) => [...c, name]);
-                }
-              }}
+              onToggle={(name) => setRecipientFilter((current) => toggleFilterValue(current, name))}
+              onSelectVisible={(names) =>
+                setRecipientFilter((current) => Array.from(new Set([...current, ...names])))
+              }
             />
           </div>
         </div>
@@ -303,7 +259,6 @@ function DashboardData({
 }) {
   const [loading, setLoading] = useState(true);
   const [totalAmount, setTotalAmount] = useState(0);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [timeData, setTimeData] = useState<TimeResult[]>([]);
   const [agencies, setAgencies] = useState<SpendingResult[]>([]);
   const [products, setProducts] = useState<SpendingResult[]>([]);
@@ -322,29 +277,20 @@ function DashboardData({
       spendingByCategory("recipient", filters, BREAKDOWN_LIMIT),
       spendingOverTime(filters, grouping),
       searchAwards(filters, awardPage, 50, awardSort, awardOrder),
-      awardCount(filters),
     ])
-      .then(async ([pscData, agencyData, recipientData, timeResp, awardResp, countResp]) => {
+      .then(([pscData, agencyData, recipientData, timeResp, awardResp]) => {
         if (cancelled) return;
         const pscResults = pscData.results || [];
         const agencyResults = agencyData.results || [];
         const recipientResults = recipientData.results || [];
         const awardResults = awardResp.results || [];
 
-        const [productsWithCounts, agenciesWithCounts, recipientsWithCounts] = await Promise.all([
-          addCounts(pscResults, (row) => withPsc(filters, getPscCode(row))),
-          addCounts(agencyResults, (row) => withAgency(filters, row.name)),
-          addCounts(recipientResults, (row) => withRecipient(filters, row.name)),
-        ]);
-
-        if (cancelled) return;
-        setProducts(productsWithCounts);
-        setAgencies(agenciesWithCounts);
-        setRecipients(recipientsWithCounts);
+        setProducts(pscResults);
+        setAgencies(agencyResults);
+        setRecipients(recipientResults);
         setTimeData(timeResp.results || []);
         setAwards(awardResults);
         setTotalAmount(pscResults.reduce((sum: number, row: SpendingResult) => sum + (row.amount || 0), 0));
-        setTotalCount(getAwardTotal(countResp));
         setLoading(false);
       })
       .catch(() => {
@@ -355,7 +301,6 @@ function DashboardData({
         setTimeData([]);
         setAwards([]);
         setTotalAmount(0);
-        setTotalCount(null);
         setLoading(false);
       });
 
@@ -593,7 +538,6 @@ function BreakdownTable({
           <thead className="sticky top-0 z-10 border-b" style={{ background: "var(--hunter-50)", borderColor: "var(--cream-300)" }}>
             <tr>
               <th className="px-3 py-2 text-left font-medium" style={{ color: "var(--hunter-600)" }}>Name</th>
-              <th className="px-3 py-2 text-right font-medium" style={{ color: "var(--hunter-600)" }}>Count</th>
               <th className="px-3 py-2 text-right font-medium" style={{ color: "var(--hunter-600)" }}>Amount</th>
             </tr>
           </thead>
@@ -612,7 +556,6 @@ function BreakdownTable({
                   onClick={() => onToggle(row)}
                 >
                   <td className="px-3 py-2" style={{ color: "var(--hunter-700)" }}>{row.name}</td>
-                  <td className="px-3 py-2 text-right" style={{ color: "var(--cream-400)" }}>{getCount(row)?.toLocaleString() || "—"}</td>
                   <td className="px-3 py-2 text-right font-mono" style={{ color: "var(--hunter-700)" }}>${formatAmount(row.amount)}</td>
                 </tr>
               );
@@ -707,10 +650,12 @@ function AwardsTable({
 
 function RecipientSearch({
   selected,
-  onAdd,
+  onToggle,
+  onSelectVisible,
 }: {
   selected: string[];
-  onAdd: (name: string) => void;
+  onToggle: (name: string) => void;
+  onSelectVisible: (names: string[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<string[]>([]);
@@ -720,7 +665,6 @@ function RecipientSearch({
 
   useEffect(() => {
     if (query.trim().length < 2) {
-      setResults([]);
       return;
     }
     clearTimeout(debounceRef.current);
@@ -729,7 +673,6 @@ function RecipientSearch({
         setResults(
           (data.results || [])
             .map((r) => r.recipient_name)
-            .filter((name) => !selected.includes(name))
         );
         setOpen(true);
       });
@@ -747,6 +690,8 @@ function RecipientSearch({
     return () => document.removeEventListener("mousedown", handleOutside);
   }, []);
 
+  const allVisibleSelected = results.length > 0 && results.every((name) => selected.includes(name));
+
   return (
     <div ref={containerRef} className="relative">
       <input
@@ -755,30 +700,55 @@ function RecipientSearch({
         className="w-full px-3 py-2 rounded-md text-sm"
         style={{ border: "1px solid var(--cream-300)", color: "var(--hunter-700)" }}
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          const value = e.target.value;
+          setQuery(value);
+          if (value.trim().length < 2) {
+            setResults([]);
+            setOpen(false);
+          }
+        }}
         onFocus={() => results.length > 0 && setOpen(true)}
       />
       {open && results.length > 0 && (
         <div
-          className="absolute left-0 right-0 z-20 mt-1 rounded-md border shadow-lg max-h-64 overflow-y-auto"
+          className="absolute left-0 right-0 z-20 mt-1 rounded-md border shadow-lg"
           style={{ background: "white", borderColor: "var(--cream-300)" }}
         >
-          {results.map((name) => (
+          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "var(--cream-200)" }}>
+            <span className="text-xs font-medium uppercase" style={{ color: "var(--cream-400)" }}>
+              Visible Recipients
+            </span>
             <button
-              key={name}
               type="button"
-              className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--hunter-50)]"
-              style={{ color: "var(--hunter-700)" }}
+              className="text-xs font-medium disabled:opacity-40"
+              style={{ color: "var(--hunter-500)" }}
+              disabled={allVisibleSelected}
               onClick={() => {
-                onAdd(name);
-                setQuery("");
-                setResults([]);
-                setOpen(false);
+                onSelectVisible(results);
+                setOpen(true);
               }}
             >
-              {name}
+              Select all visible
             </button>
-          ))}
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1">
+            {results.map((name) => (
+              <label
+                key={name}
+                className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--hunter-50)]"
+                style={{ color: "var(--hunter-700)" }}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-[#4a7a4a]"
+                  checked={selected.includes(name)}
+                  onChange={() => onToggle(name)}
+                />
+                <span className="truncate">{name}</span>
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -791,12 +761,6 @@ function AwardDetail({ award, onClose }: { award: Award; onClose: () => void }) 
     : null;
 
   const naicsLabel = award["NAICS Code"] ? NAICS_LABELS[award["NAICS Code"]] || "" : "";
-  const pscLabel = award["Award ID"]
-    ? Object.entries(FOOD_PSC_CODES).find(([, label]) =>
-        (award.Description || "").toLowerCase().includes(label.toLowerCase())
-      )?.[1] || ""
-    : "";
-
   const location = [award["Place of Performance City"], award["Place of Performance State Code"]]
     .filter(Boolean)
     .join(", ");

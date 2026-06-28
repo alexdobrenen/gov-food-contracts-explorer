@@ -6,56 +6,186 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(__dirname, "..", "src", "data");
 const outPath = path.join(outDir, "opportunities.json");
 
-const API_KEY = process.env.SAM_GOV_API_KEY;
-const BASE_URL = "https://api.sam.gov/prod/opportunity/v2/search";
-
-const FOOD_NAICS_CODES = [
-  "311411", "311412", "311421", "311422", "311423",
-  "311511", "311611", "311612", "311613", "311615",
-  "311710", "311811", "311812", "311813",
-  "311919", "311920", "311941", "311942",
-  "311991", "311999",
-  "312111",
-  "722310",
-];
-
-const FOOD_PSC_CODES = [
-  "8905", "8910", "8915", "8920", "8925", "8930",
-  "8935", "8940", "8945", "8950", "8955", "8960",
-  "8965", "8970",
-];
-
+const BASE_URL = "https://api.sam.gov/opportunities/v2/search";
 const NOTICE_TYPES = "p,o,k,r";
+const DEFAULT_MAX_REQUESTS = 9;
+const DEFAULT_LOOKBACK_DAYS = 14;
+const PAGE_LIMIT = 1000;
+const FOOD_CLASSIFICATION_CODE = "89";
 
-if (!API_KEY) {
-  if (fs.existsSync(outPath)) {
-    console.log("SAM_GOV_API_KEY not set; keeping existing opportunities.json");
-    process.exit(0);
-  }
-  console.error("SAM_GOV_API_KEY is required (set in environment or .env)");
-  process.exit(1);
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(value || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
-async function fetchPage(params) {
-  const url = new URL(BASE_URL);
-  url.searchParams.set("api_key", API_KEY);
-  url.searchParams.set("noticeType", NOTICE_TYPES);
-  url.searchParams.set("postedFrom", daysAgo(90));
-  url.searchParams.set("limit", "999");
-  url.searchParams.set("offset", "0");
-  for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, v);
+function parseDateInput(value) {
+  if (!value) return null;
+  const mmddyyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
+  if (mmddyyyy) {
+    const [, month, day, year] = mmddyyyy;
+    return new Date(Number(year), Number(month) - 1, Number(day));
   }
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: API_KEY },
+  const yyyymmdd = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  if (yyyymmdd) {
+    const [, year, month, day] = yyyymmdd;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function formatSamDate(value) {
+  const date = value instanceof Date ? value : parseDateInput(value);
+  if (!date || Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid SAM.gov date: ${value}`);
+  }
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
+}
+
+export function getDateRange(env = process.env, now = new Date()) {
+  const postedTo = env.SAM_POSTED_TO
+    ? parseDateInput(env.SAM_POSTED_TO)
+    : now;
+  const postedFrom = env.SAM_POSTED_FROM
+    ? parseDateInput(env.SAM_POSTED_FROM)
+    : addDays(postedTo, -DEFAULT_LOOKBACK_DAYS);
+
+  return {
+    postedFrom: formatSamDate(postedFrom),
+    postedTo: formatSamDate(postedTo),
+  };
+}
+
+function readExistingData(filePath = outPath) {
+  if (!fs.existsSync(filePath)) return { meta: null, opportunities: [] };
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return {
+      meta: data.meta || null,
+      opportunities: Array.isArray(data.opportunities) ? data.opportunities : [],
+    };
+  } catch (err) {
+    console.warn(`Could not read existing opportunities data: ${err.message}`);
+    return { meta: null, opportunities: [] };
+  }
+}
+
+function extractOrgName(raw) {
+  if (raw.department || raw.departmentName) return raw.department || raw.departmentName;
+  if (raw.fullParentPathName) return String(raw.fullParentPathName).split(".")[0] || null;
+  return null;
+}
+
+function getContact(raw) {
+  const contact = raw.pointOfContact?.[0] || raw.pointofContact?.[0] || {};
+  return {
+    name: contact.fullName || contact.fullname || null,
+    email: contact.email || null,
+    phone: contact.phone || null,
+  };
+}
+
+function getState(pop) {
+  return pop?.state?.code || pop?.state?.name || pop?.city?.state?.code || pop?.city?.state?.name || null;
+}
+
+function normalizeDateString(value) {
+  if (!value) return null;
+  return String(value).split(" ")[0] || null;
+}
+
+export function normalizeOpportunity(raw) {
+  const pop = raw.placeOfPerformance || {};
+  const office = raw.officeAddress || {};
+  const noticeId = raw.noticeId || raw.noticeid || "";
+
+  return {
+    noticeId,
+    title: raw.title || "",
+    solicitationNumber: raw.solicitationNumber || "",
+    noticeType: raw.type || raw.noticeType || "",
+    naicsCode: raw.naicsCode || "",
+    pscCode: raw.classificationCode || "",
+    responseDeadline: normalizeDateString(raw.responseDeadLine || raw.responseDeadline || raw.reponseDeadLine),
+    postedDate: normalizeDateString(raw.postedDate),
+    setAsideType: raw.typeOfSetAsideDescription || raw.typeOfSetAside || raw.setAside || null,
+    placeOfPerformance: {
+      city: pop.city?.name || null,
+      state: getState(pop),
+      country: pop.country?.code || pop.country?.name || null,
+    },
+    contractingOffice: office.name || raw.office || null,
+    department: extractOrgName(raw),
+    pointOfContact: getContact(raw),
+    description: String(raw.description || "").slice(0, 500),
+    samUrl: raw.uiLink && raw.uiLink !== "null" ? raw.uiLink : `https://sam.gov/opp/${noticeId}/view`,
+    archiveDate: normalizeDateString(raw.archiveDate),
+    active: raw.active || null,
+  };
+}
+
+function parseComparableDate(value) {
+  if (!value) return null;
+  const date = parseDateInput(String(value).split("T")[0].split(" ")[0]);
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+export function isFutureRelevant(opportunity, now = new Date()) {
+  if (opportunity.active && String(opportunity.active).toLowerCase() === "no") return false;
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const archiveDate = parseComparableDate(opportunity.archiveDate);
+  if (archiveDate && archiveDate < today) return false;
+
+  const deadline = parseComparableDate(opportunity.responseDeadline);
+  if (deadline && deadline < today) return false;
+
+  return true;
+}
+
+export function mergeOpportunities(existing, fetched, now = new Date()) {
+  const byId = new Map();
+  for (const item of existing) {
+    if (item.noticeId && isFutureRelevant(item, now)) byId.set(item.noticeId, item);
+  }
+  for (const item of fetched) {
+    if (item.noticeId && isFutureRelevant(item, now)) byId.set(item.noticeId, item);
+  }
+
+  return Array.from(byId.values()).sort((a, b) => {
+    const aDate = a.responseDeadline || "9999-12-31";
+    const bDate = b.responseDeadline || "9999-12-31";
+    return aDate.localeCompare(bDate);
   });
+}
+
+export function buildSearchUrl({ apiKey, offset, dateRange, limit = PAGE_LIMIT }) {
+  const url = new URL(BASE_URL);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("ptype", NOTICE_TYPES);
+  url.searchParams.set("status", "active");
+  url.searchParams.set("postedFrom", dateRange.postedFrom);
+  url.searchParams.set("postedTo", dateRange.postedTo);
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("offset", String(offset));
+  url.searchParams.set("ccode", FOOD_CLASSIFICATION_CODE);
+  return url;
+}
+
+async function fetchPage({ apiKey, offset, dateRange, fetchImpl = fetch }) {
+  const url = buildSearchUrl({ apiKey, offset, dateRange });
+  const res = await fetchImpl(url.toString());
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`SAM.gov API error ${res.status}: ${text}`);
@@ -63,89 +193,108 @@ async function fetchPage(params) {
   return res.json();
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export async function fetchOpportunities({
+  apiKey,
+  maxRequests = DEFAULT_MAX_REQUESTS,
+  dateRange,
+  fetchImpl = fetch,
+} = {}) {
+  if (!apiKey) throw new Error("SAM_GOV_API_KEY is required");
 
-function normalizeOpportunity(raw) {
-  const poc = raw.pointOfContact?.[0] || {};
-  const pop = raw.placeOfPerformance || {};
-  const addr = pop.streetAddress2 || pop.city?.name || null;
+  const opportunities = [];
+  let requestCount = 0;
+  let totalRecords = null;
+
+  for (let offset = 0; requestCount < maxRequests; offset += 1) {
+    const data = await fetchPage({ apiKey, offset, dateRange, fetchImpl });
+    requestCount += 1;
+
+    totalRecords = Number(data.totalRecords || 0);
+    const items = data.opportunitiesData || data.opportunities || [];
+    opportunities.push(...items.map(normalizeOpportunity));
+
+    const fetchedCount = offset * PAGE_LIMIT + items.length;
+    const hasMore = totalRecords > fetchedCount && items.length > 0;
+    if (!hasMore) {
+      return { opportunities, requestCount, totalRecords, truncated: false };
+    }
+  }
+
   return {
-    noticeId: raw.noticeId,
-    title: raw.title || "",
-    solicitationNumber: raw.solicitationNumber || "",
-    noticeType: raw.type || raw.noticeType || "",
-    naicsCode: raw.naicsCode || "",
-    pscCode: raw.classificationCode || "",
-    responseDeadline: raw.responseDeadLine || raw.responseDeadline || null,
-    postedDate: raw.postedDate || "",
-    setAsideType: raw.typeOfSetAsideDescription || raw.typeOfSetAside || null,
-    placeOfPerformance: {
-      city: pop.city?.name || null,
-      state: pop.state?.code || pop.state?.name || null,
-      country: pop.country?.code || pop.country?.name || null,
-    },
-    contractingOffice: raw.officeAddress?.name || raw.office || null,
-    department: raw.department || raw.departmentName || null,
-    pointOfContact: {
-      name: poc.fullName || null,
-      email: poc.email || null,
-      phone: poc.phone || null,
-    },
-    description: (raw.description || "").slice(0, 500),
-    samUrl: `https://sam.gov/opp/${raw.noticeId}/view`,
-    archiveDate: raw.archiveDate || null,
+    opportunities,
+    requestCount,
+    totalRecords,
+    truncated: totalRecords == null || opportunities.length < totalRecords,
   };
 }
 
-async function main() {
-  const seen = new Map();
+export async function run({ env = process.env, outputPath = outPath, fetchImpl = fetch, now = new Date() } = {}) {
+  const apiKey = env.SAM_GOV_API_KEY;
+  const existing = readExistingData(outputPath);
 
-  const queries = [
-    ...FOOD_NAICS_CODES.map((code) => ({ param: "ncode", code })),
-    ...FOOD_PSC_CODES.map((code) => ({ param: "psc", code })),
-  ];
-
-  for (const { param, code } of queries) {
-    try {
-      const data = await fetchPage({ [param]: code });
-      const items = data.opportunitiesData || data.opportunities || [];
-      for (const item of items) {
-        if (item.noticeId && !seen.has(item.noticeId)) {
-          seen.set(item.noticeId, normalizeOpportunity(item));
-        }
-      }
-      console.log(`  ${param}=${code}: ${items.length} results`);
-    } catch (err) {
-      console.warn(`  ${param}=${code}: ${err.message}`);
+  if (!apiKey) {
+    if (fs.existsSync(outputPath)) {
+      console.log("SAM_GOV_API_KEY not set; keeping existing opportunities.json");
+      return { wrote: false, reason: "missing-api-key" };
     }
-    await sleep(250);
+    throw new Error("SAM_GOV_API_KEY is required (set in environment or GitHub Actions secret)");
   }
 
-  const opportunities = Array.from(seen.values()).sort(
-    (a, b) => (a.responseDeadline || "9999").localeCompare(b.responseDeadline || "9999")
-  );
+  const maxRequests = parsePositiveInt(env.SAM_MAX_REQUESTS, DEFAULT_MAX_REQUESTS);
+  const dateRange = getDateRange(env, now);
+  let fetched;
 
-  if (opportunities.length === 0 && fs.existsSync(outPath)) {
-    console.log("\nNo results fetched (possible rate limit). Keeping existing data.");
-    return;
+  try {
+    fetched = await fetchOpportunities({ apiKey, maxRequests, dateRange, fetchImpl });
+  } catch (err) {
+    if (existing.opportunities.length > 0) {
+      console.warn(`SAM.gov fetch failed; keeping existing opportunities.json. ${err.message}`);
+      return { wrote: false, reason: "api-error", error: err };
+    }
+    throw err;
   }
 
+  if (fetched.opportunities.length === 0 && existing.opportunities.length > 0) {
+    console.log("\nNo results fetched. Keeping existing opportunities.json.");
+    return { wrote: false, reason: "empty-fetch", fetched };
+  }
+
+  const opportunities = mergeOpportunities(existing.opportunities, fetched.opportunities, now);
   const output = {
     meta: {
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: now.toISOString(),
       totalCount: opportunities.length,
+      source: "sam.gov",
+      query: {
+        ccode: FOOD_CLASSIFICATION_CODE,
+        ptype: NOTICE_TYPES,
+        status: "active",
+        postedFrom: dateRange.postedFrom,
+        postedTo: dateRange.postedTo,
+      },
+      requestCount: fetched.requestCount,
+      requestBudget: maxRequests,
+      apiTotalRecords: fetched.totalRecords,
+      truncated: fetched.truncated,
+      warning: fetched.truncated
+        ? `SAM.gov returned more than ${maxRequests} pages; results were truncated to stay within the request budget.`
+        : null,
     },
     opportunities,
   };
 
-  fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(outPath, `${JSON.stringify(output, null, 2)}\n`);
-  console.log(`\nExported ${opportunities.length} opportunities to ${outPath}`);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
+  console.log(`\nExported ${opportunities.length} opportunities to ${outputPath}`);
+  console.log(`SAM.gov requests used: ${fetched.requestCount}/${maxRequests}`);
+  if (fetched.truncated) console.warn(output.meta.warning);
+
+  return { wrote: true, output };
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

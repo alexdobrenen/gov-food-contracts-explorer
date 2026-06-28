@@ -1,5 +1,5 @@
 {
-  "name": "gov-food-contract-explorer",
+  "name": "gov-food-contracts-explorer",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,7 +8,8 @@
     "prebuild": "npm run fetch:opportunities",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:sam": "node --test scripts/test/fetch-sam-opportunities.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",

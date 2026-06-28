@@ -139,17 +139,24 @@ export async function searchAwards(
   return res.json();
 }
 
-export async function awardCount(filters: SpendingFilters) {
-  const f = buildFilters(filters);
-  f.award_type_codes = ["A", "B", "C", "D"];
+export async function awardSearchCount(filters: SpendingFilters) {
+  const payload = {
+    filters: buildFilters(filters),
+    fields: ["Award ID"],
+    page: 1,
+    limit: 1,
+    sort: "Award Amount",
+    order: "desc",
+  };
 
-  const res = await fetch(`${BASE_URL}/search/spending_by_award_count/`, {
+  const res = await fetch(`${BASE_URL}/search/spending_by_award/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filters: f }),
+    body: JSON.stringify(payload),
   });
 
-  return res.json();
+  const data = await res.json();
+  return Number(data.page_metadata?.total || 0);
 }
 
 export async function spendingByCategory(

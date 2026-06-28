@@ -1,8 +1,8 @@
-# Gov Food Contract Explorer
+# Gov Food Contracts Explorer
 
 Browse open federal food contract opportunities and historical spending data.
 
-**Live site:** [alexdobrenen.github.io/gov-food-contract-explorer](https://alexdobrenen.github.io/gov-food-contract-explorer)
+**Live site:** [alexdobrenen.github.io/gov-food-contracts-explorer](https://alexdobrenen.github.io/gov-food-contracts-explorer)
 
 ## Features
 
