@@ -37,7 +37,7 @@ jobs:
       - name: Build static site
         run: npm run build
         env:
-          NEXT_PUBLIC_BASE_PATH: /federal-food-services-contract-explorer
+          NEXT_PUBLIC_BASE_PATH: /gov-food-contract-explorer
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

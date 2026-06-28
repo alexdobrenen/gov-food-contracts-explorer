@@ -20,7 +20,7 @@ export default function Home() {
       >
         <div className="max-w-7xl mx-auto px-4 py-4">
           <h1 className="text-2xl font-bold text-white">
-            Federal Food Services Contract Explorer
+            Gov Food Contract Explorer
           </h1>
         </div>
         <div className="max-w-7xl mx-auto px-4">
