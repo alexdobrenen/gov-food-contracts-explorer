@@ -20,6 +20,7 @@ export function DLAContracts() {
   const [search, setSearch] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [commodityFilter, setCommodityFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sortCol, setSortCol] = useState("contract_number");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -34,6 +35,7 @@ export function DLAContracts() {
       .filter((contract) => {
         if (regionFilter && contract.region !== regionFilter) return false;
         if (typeFilter && contract.contract_type !== typeFilter) return false;
+        if (commodityFilter && contract.commodity !== commodityFilter) return false;
         if (statusFilter && contract.status !== statusFilter) return false;
         if (!searchTerm) return true;
 
@@ -54,7 +56,7 @@ export function DLAContracts() {
           sensitivity: "base",
         }) * direction;
       });
-  }, [regionFilter, search, sortCol, sortDir, statusFilter, typeFilter]);
+  }, [commodityFilter, regionFilter, search, sortCol, sortDir, statusFilter, typeFilter]);
 
   const regions = useMemo(
     () => stats?.byRegion?.map((r) => r.region).filter(Boolean) || [],
@@ -62,6 +64,10 @@ export function DLAContracts() {
   );
   const types = useMemo(
     () => stats?.byType?.map((t) => t.contract_type).filter(Boolean) || [],
+    [stats]
+  );
+  const commodities = useMemo(
+    () => stats?.byCommodity?.map((c) => c.commodity).filter(Boolean) || [],
     [stats]
   );
 
@@ -175,6 +181,21 @@ export function DLAContracts() {
               background: "white",
               color: "var(--hunter-700)",
             }}
+            value={commodityFilter}
+            onChange={(e) => setCommodityFilter(e.target.value)}
+          >
+            <option value="">All Commodities</option>
+            {commodities.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select
+            className="px-3 py-2 rounded-md text-sm"
+            style={{
+              border: "1px solid var(--cream-300)",
+              background: "white",
+              color: "var(--hunter-700)",
+            }}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -190,10 +211,10 @@ export function DLAContracts() {
         className="rounded-lg border overflow-hidden"
         style={{ borderColor: "var(--cream-300)" }}
       >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="max-h-[560px] overflow-auto">
+          <table className="w-full min-w-[980px] text-sm">
             <thead
-              className="border-b"
+              className="sticky top-0 z-10 border-b"
               style={{
                 background: "var(--hunter-50)",
                 borderColor: "var(--cream-300)",
@@ -212,7 +233,10 @@ export function DLAContracts() {
                   <th
                     key={col.key}
                     className="px-4 py-3 text-left font-medium cursor-pointer select-none"
-                    style={{ color: "var(--hunter-600)" }}
+                    style={{
+                      background: "var(--hunter-50)",
+                      color: "var(--hunter-600)",
+                    }}
                     onClick={() => toggleSort(col.key)}
                   >
                     {col.label}
