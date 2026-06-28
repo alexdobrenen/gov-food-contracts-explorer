@@ -1,0 +1,24 @@
+# Keep the compact SQLite dataset that powers the static web build, but ignore
+# bulky scrape artifacts and transient SQLite files.
+data/pdfs/
+data/raw_responses/
+data/*.db-shm
+data/*.db-wal
+data/contracts_export.json
+data/sample_export.json
+
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+
+.DS_Store
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
