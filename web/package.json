@@ -4,15 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "export:contracts": "node scripts/export-contracts.mjs",
-    "prebuild": "npm run export:contracts",
+    "fetch:opportunities": "node scripts/fetch-sam-opportunities.mjs",
+    "prebuild": "npm run fetch:opportunities",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
-    "better-sqlite3": "^12.11.1",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -20,7 +19,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

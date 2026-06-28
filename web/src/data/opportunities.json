@@ -1,0 +1,164 @@
+{
+  "meta": {
+    "fetchedAt": "2026-06-27T00:00:00Z",
+    "totalCount": 6
+  },
+  "opportunities": [
+    {
+      "noticeId": "sample-001",
+      "title": "Fresh Fruits and Vegetables for Fort Liberty",
+      "solicitationNumber": "SPE300-26-R-0001",
+      "noticeType": "Solicitation",
+      "naicsCode": "311421",
+      "pscCode": "8915",
+      "responseDeadline": "2026-07-15T17:00:00-04:00",
+      "postedDate": "2026-06-01",
+      "setAsideType": "Total Small Business Set-Aside",
+      "placeOfPerformance": {
+        "city": "Fort Liberty",
+        "state": "NC",
+        "country": "US"
+      },
+      "contractingOffice": "DLA Troop Support",
+      "department": "Department of Defense",
+      "pointOfContact": {
+        "name": "Jane Smith",
+        "email": "jane.smith@dla.mil",
+        "phone": "215-555-0100"
+      },
+      "description": "The Defense Logistics Agency Troop Support is soliciting offers for the delivery of fresh fruits and vegetables to military dining facilities at Fort Liberty, NC.",
+      "samUrl": "https://sam.gov/opp/sample-001/view",
+      "archiveDate": "2026-08-15"
+    },
+    {
+      "noticeId": "sample-002",
+      "title": "Dairy Products - Pacific Region",
+      "solicitationNumber": "SPE300-26-R-0042",
+      "noticeType": "Presolicitation",
+      "naicsCode": "311511",
+      "pscCode": "8910",
+      "responseDeadline": "2026-08-01T14:00:00-04:00",
+      "postedDate": "2026-06-10",
+      "setAsideType": null,
+      "placeOfPerformance": {
+        "city": null,
+        "state": "CA",
+        "country": "US"
+      },
+      "contractingOffice": "DLA Troop Support",
+      "department": "Department of Defense",
+      "pointOfContact": {
+        "name": "John Doe",
+        "email": "john.doe@dla.mil",
+        "phone": "215-555-0200"
+      },
+      "description": "Presolicitation notice for dairy products including fluid milk, cheese, and yogurt for military installations in the Pacific region.",
+      "samUrl": "https://sam.gov/opp/sample-002/view",
+      "archiveDate": "2026-09-01"
+    },
+    {
+      "noticeId": "sample-003",
+      "title": "Ground Beef and Processed Meat Products",
+      "solicitationNumber": "SPE300-26-R-0078",
+      "noticeType": "Combined Synopsis/Solicitation",
+      "naicsCode": "311612",
+      "pscCode": "8905",
+      "responseDeadline": "2026-07-03T12:00:00-04:00",
+      "postedDate": "2026-06-15",
+      "setAsideType": "Service-Disabled Veteran-Owned Small Business",
+      "placeOfPerformance": {
+        "city": "San Antonio",
+        "state": "TX",
+        "country": "US"
+      },
+      "contractingOffice": "DLA Troop Support",
+      "department": "Department of Defense",
+      "pointOfContact": {
+        "name": "Maria Garcia",
+        "email": "maria.garcia@dla.mil",
+        "phone": "215-555-0300"
+      },
+      "description": "Combined synopsis/solicitation for ground beef and processed meat products for Joint Base San Antonio dining facilities.",
+      "samUrl": "https://sam.gov/opp/sample-003/view",
+      "archiveDate": "2026-08-03"
+    },
+    {
+      "noticeId": "sample-004",
+      "title": "Bakery Products for Northeast Region Installations",
+      "solicitationNumber": "SPE300-26-R-0099",
+      "noticeType": "Solicitation",
+      "naicsCode": "311812",
+      "pscCode": "8920",
+      "responseDeadline": "2026-07-30T16:00:00-04:00",
+      "postedDate": "2026-06-20",
+      "setAsideType": "8(a) Set-Aside",
+      "placeOfPerformance": {
+        "city": null,
+        "state": "NY",
+        "country": "US"
+      },
+      "contractingOffice": "DLA Troop Support",
+      "department": "Department of Defense",
+      "pointOfContact": {
+        "name": "Robert Johnson",
+        "email": "robert.johnson@dla.mil",
+        "phone": "215-555-0400"
+      },
+      "description": "Solicitation for commercial bakery products including bread, rolls, and pastries for military installations in the northeastern United States.",
+      "samUrl": "https://sam.gov/opp/sample-004/view",
+      "archiveDate": "2026-08-30"
+    },
+    {
+      "noticeId": "sample-005",
+      "title": "Food Service Operations - USDA Cafeteria",
+      "solicitationNumber": "AG-3A94-S-26-0015",
+      "noticeType": "Sources Sought",
+      "naicsCode": "722310",
+      "pscCode": "8970",
+      "responseDeadline": "2026-07-10T17:00:00-04:00",
+      "postedDate": "2026-06-22",
+      "setAsideType": "HUBZone Set-Aside",
+      "placeOfPerformance": {
+        "city": "Washington",
+        "state": "DC",
+        "country": "US"
+      },
+      "contractingOffice": "USDA Office of Contracting and Procurement",
+      "department": "Department of Agriculture",
+      "pointOfContact": {
+        "name": "Lisa Chen",
+        "email": "lisa.chen@usda.gov",
+        "phone": "202-555-0500"
+      },
+      "description": "Sources sought for food service contractor to operate cafeteria and catering services at USDA headquarters in Washington, DC.",
+      "samUrl": "https://sam.gov/opp/sample-005/view",
+      "archiveDate": "2026-08-10"
+    },
+    {
+      "noticeId": "sample-006",
+      "title": "Shelf-Stable Beverages for VA Medical Centers",
+      "solicitationNumber": "36C10B26R0044",
+      "noticeType": "Solicitation",
+      "naicsCode": "312111",
+      "pscCode": "8960",
+      "responseDeadline": "2026-07-20T15:00:00-04:00",
+      "postedDate": "2026-06-25",
+      "setAsideType": "Total Small Business Set-Aside",
+      "placeOfPerformance": {
+        "city": null,
+        "state": "VA",
+        "country": "US"
+      },
+      "contractingOffice": "VA National Contracting Office",
+      "department": "Department of Veterans Affairs",
+      "pointOfContact": {
+        "name": "David Wilson",
+        "email": "david.wilson@va.gov",
+        "phone": "202-555-0600"
+      },
+      "description": "Solicitation for shelf-stable beverages including juice, water, and sports drinks for VA Medical Centers in the Mid-Atlantic region.",
+      "samUrl": "https://sam.gov/opp/sample-006/view",
+      "archiveDate": "2026-08-20"
+    }
+  ]
+}

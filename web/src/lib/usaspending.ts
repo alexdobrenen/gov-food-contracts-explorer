@@ -58,6 +58,8 @@ export interface SpendingFilters {
   naicsCodes?: string[];
   pscCodes?: string[];
   agencyName?: string;
+  agencyNames?: string[];
+  recipientNames?: string[];
   startDate?: string;
   endDate?: string;
   keywords?: string[];
@@ -81,8 +83,16 @@ function buildFilters(filters: SpendingFilters) {
   }
 
   if (filters.keywords) f.keywords = filters.keywords;
-  if (filters.agencyName) {
-    f.agencies = [{ type: "awarding", tier: "toptier", name: filters.agencyName }];
+  const agencies = filters.agencyNames?.length
+    ? filters.agencyNames
+    : filters.agencyName
+      ? [filters.agencyName]
+      : [];
+  if (agencies.length > 0) {
+    f.agencies = agencies.map((name) => ({ type: "awarding", tier: "toptier", name }));
+  }
+  if (filters.recipientNames && filters.recipientNames.length > 0) {
+    f.recipient_search_text = filters.recipientNames;
   }
 
   return f;
@@ -110,6 +120,9 @@ export async function searchAwards(
       "awarding_sub_agency",
       "NAICS Code",
       "Place of Performance State Code",
+      "generated_internal_id",
+      "recipient_id",
+      "Place of Performance City",
     ],
     page,
     limit,
@@ -126,16 +139,26 @@ export async function searchAwards(
   return res.json();
 }
 
+export async function awardCount(filters: SpendingFilters) {
+  const f = buildFilters(filters);
+  f.award_type_codes = ["A", "B", "C", "D"];
+
+  const res = await fetch(`${BASE_URL}/search/spending_by_award_count/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filters: f }),
+  });
+
+  return res.json();
+}
+
 export async function spendingByCategory(
   category: "recipient" | "awarding_agency" | "awarding_subagency" | "naics" | "psc",
   filters: SpendingFilters,
   limit = 20
 ) {
   const f = buildFilters(filters);
-  f.award_type_codes = [
-    "A", "B", "C", "D",
-    "IDV_A", "IDV_B", "IDV_B_A", "IDV_B_B", "IDV_B_C", "IDV_C", "IDV_D", "IDV_E",
-  ];
+  f.award_type_codes = ["A", "B", "C", "D"];
 
   const payload = {
     filters: f,
@@ -151,6 +174,15 @@ export async function spendingByCategory(
   });
 
   return res.json();
+}
+
+export async function searchRecipients(query: string, limit = 10) {
+  const res = await fetch(`${BASE_URL}/autocomplete/recipient/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ search_text: query, limit }),
+  });
+  return res.json() as Promise<{ results: { recipient_name: string }[] }>;
 }
 
 export async function spendingOverTime(
