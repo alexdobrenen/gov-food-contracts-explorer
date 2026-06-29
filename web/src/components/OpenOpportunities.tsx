@@ -8,7 +8,12 @@ import {
   opportunitiesMeta,
   type SamOpportunity,
 } from "@/lib/opportunities";
-import { NAICS_LABELS } from "@/lib/usaspending";
+import {
+  distributorProfile,
+  scoreOpportunityFit,
+  type OpportunityFit,
+} from "@/lib/opportunity-matching";
+import { FOOD_PSC_CODES, NAICS_LABELS } from "@/lib/usaspending";
 
 function toggleFilterValue(values: string[], value: string) {
   return values.includes(value)
@@ -18,37 +23,38 @@ function toggleFilterValue(values: string[], value: string) {
 
 type SortKey =
   | "responseDeadline"
+  | "fit"
+  | "pscCode"
   | "title"
-  | "solicitationNumber"
   | "noticeType"
-  | "naicsCode"
-  | "setAsideType"
   | "department"
   | "state";
 
 const COLUMNS: Array<{ key: SortKey; label: string }> = [
   { key: "responseDeadline", label: "Deadline" },
+  { key: "fit", label: "Fit" },
+  { key: "pscCode", label: "Product Category" },
   { key: "title", label: "Title" },
-  { key: "solicitationNumber", label: "Sol. #" },
   { key: "noticeType", label: "Type" },
-  { key: "naicsCode", label: "NAICS" },
-  { key: "setAsideType", label: "Set-Aside" },
   { key: "department", label: "Department" },
   { key: "state", label: "State" },
 ];
 
 function getSortValue(opp: SamOpportunity, key: SortKey): string {
   if (key === "state") return opp.placeOfPerformance?.state || "";
+  if (key === "fit") return String(scoreOpportunityFit(opp).score).padStart(3, "0");
+  if (key === "pscCode") return FOOD_PSC_CODES[opp.pscCode] || opp.pscCode;
   const v = opp[key];
   return v == null ? "" : String(v);
 }
 
 export function OpenOpportunities() {
   const [noticeTypeFilter, setNoticeTypeFilter] = useState<string[]>([]);
+  const [pscFilter, setPscFilter] = useState<string[]>([]);
   const [naicsFilter, setNaicsFilter] = useState<string[]>([]);
-  const [setAsideFilter, setSetAsideFilter] = useState<string[]>([]);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [showMatchesOnly, setShowMatchesOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<SortKey>("responseDeadline");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -59,12 +65,10 @@ export function OpenOpportunities() {
   const filtered = useMemo(() => {
     return allOpportunities
       .filter((opp) => {
+        if (showMatchesOnly && scoreOpportunityFit(opp).level === "low") return false;
         if (noticeTypeFilter.length > 0 && !noticeTypeFilter.includes(opp.noticeType)) return false;
+        if (pscFilter.length > 0 && !pscFilter.includes(opp.pscCode)) return false;
         if (naicsFilter.length > 0 && !naicsFilter.includes(opp.naicsCode)) return false;
-        if (setAsideFilter.length > 0) {
-          const val = opp.setAsideType || "Full & Open";
-          if (!setAsideFilter.includes(val)) return false;
-        }
         if (departmentFilter.length > 0 && !departmentFilter.includes(opp.department || "")) return false;
         if (stateFilter.length > 0 && !stateFilter.includes(opp.placeOfPerformance?.state || "")) return false;
         if (search.trim()) {
@@ -80,7 +84,12 @@ export function OpenOpportunities() {
         const dir = sortDir === "asc" ? 1 : -1;
         return aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" }) * dir;
       });
-  }, [noticeTypeFilter, naicsFilter, setAsideFilter, departmentFilter, stateFilter, search, sortCol, sortDir]);
+  }, [noticeTypeFilter, pscFilter, naicsFilter, departmentFilter, stateFilter, showMatchesOnly, search, sortCol, sortDir]);
+
+  const matchCount = useMemo(
+    () => allOpportunities.filter((opp) => scoreOpportunityFit(opp).level !== "low").length,
+    []
+  );
 
   const noticeTypes = useMemo(
     () => stats.byNoticeType.map((t) => t.noticeType).filter(Boolean),
@@ -90,8 +99,8 @@ export function OpenOpportunities() {
     () => Array.from(new Set(allOpportunities.map((o) => o.naicsCode).filter(Boolean))).sort(),
     []
   );
-  const setAsideTypes = useMemo(
-    () => Array.from(new Set(allOpportunities.map((o) => o.setAsideType || "Full & Open"))).sort(),
+  const pscCodes = useMemo(
+    () => Array.from(new Set(allOpportunities.map((o) => o.pscCode).filter(Boolean))).sort(),
     []
   );
   const departments = useMemo(
@@ -117,6 +126,72 @@ export function OpenOpportunities() {
 
   return (
     <div className="space-y-6">
+      <section
+        className="rounded-lg border p-4"
+        style={{ background: "var(--cream-50)", borderColor: "var(--cream-300)" }}
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold" style={{ color: "var(--hunter-700)" }}>
+                {distributorProfile.name}
+              </h2>
+              <span
+                className="rounded px-2 py-0.5 text-xs font-semibold"
+                style={{ background: "var(--hunter-100)", color: "var(--hunter-700)" }}
+              >
+                {matchCount} potential matches
+              </span>
+            </div>
+            <p className="mt-1 text-sm" style={{ color: "var(--hunter-600)" }}>
+              {distributorProfile.summary}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {distributorProfile.capabilities.map((capability) => (
+                <span
+                  key={capability}
+                  className="rounded border px-2 py-1 text-xs"
+                  style={{
+                    borderColor: "var(--cream-300)",
+                    background: "white",
+                    color: "var(--hunter-600)",
+                  }}
+                >
+                  {capability}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div
+            className="flex shrink-0 overflow-hidden rounded-md border"
+            style={{ borderColor: "var(--cream-300)" }}
+          >
+            <button
+              type="button"
+              className="px-3 py-2 text-sm font-medium"
+              style={{
+                background: showMatchesOnly ? "white" : "var(--hunter-600)",
+                color: showMatchesOnly ? "var(--hunter-600)" : "white",
+              }}
+              onClick={() => setShowMatchesOnly(false)}
+            >
+              All opportunities
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 text-sm font-medium"
+              style={{
+                background: showMatchesOnly ? "var(--hunter-600)" : "white",
+                color: showMatchesOnly ? "white" : "var(--hunter-600)",
+              }}
+              onClick={() => setShowMatchesOnly(true)}
+            >
+              Profile matches
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div
@@ -176,6 +251,15 @@ export function OpenOpportunities() {
             onClear={() => setNoticeTypeFilter([])}
           />
           <MultiSelectFilter
+            label="PSC"
+            allLabel="All PSC"
+            options={pscCodes}
+            formatOption={(code) => `${code} - ${FOOD_PSC_CODES[code] || code}`}
+            selected={pscFilter}
+            onToggle={(v) => setPscFilter((c) => toggleFilterValue(c, v))}
+            onClear={() => setPscFilter([])}
+          />
+          <MultiSelectFilter
             label="NAICS"
             allLabel="All NAICS"
             options={naicsCodes}
@@ -183,14 +267,6 @@ export function OpenOpportunities() {
             selected={naicsFilter}
             onToggle={(v) => setNaicsFilter((c) => toggleFilterValue(c, v))}
             onClear={() => setNaicsFilter([])}
-          />
-          <MultiSelectFilter
-            label="Set-Aside"
-            allLabel="All Set-Asides"
-            options={setAsideTypes}
-            selected={setAsideFilter}
-            onToggle={(v) => setSetAsideFilter((c) => toggleFilterValue(c, v))}
-            onClear={() => setSetAsideFilter([])}
           />
           <MultiSelectFilter
             label="Departments"
@@ -262,6 +338,7 @@ export function OpenOpportunities() {
               ) : (
                 filtered.map((opp, i) => {
                   const days = daysUntilDeadline(opp.responseDeadline);
+                  const fit = scoreOpportunityFit(opp);
                   return (
                     <tr
                       key={opp.noticeId}
@@ -279,6 +356,16 @@ export function OpenOpportunities() {
                       <td className="px-4 py-3">
                         <DeadlineBadge deadline={opp.responseDeadline} days={days} />
                       </td>
+                      <td className="px-4 py-3">
+                        <FitBadge fit={fit} />
+                      </td>
+                      <td
+                        className="px-4 py-3 text-xs"
+                        style={{ color: "var(--hunter-600)" }}
+                        title={opp.pscCode}
+                      >
+                        {FOOD_PSC_CODES[opp.pscCode] || opp.pscCode || "—"}
+                      </td>
                       <td
                         className="px-4 py-3 max-w-[280px] truncate"
                         style={{ color: "var(--hunter-700)" }}
@@ -286,24 +373,8 @@ export function OpenOpportunities() {
                       >
                         {opp.title}
                       </td>
-                      <td
-                        className="px-4 py-3 font-mono text-xs"
-                        style={{ color: "var(--hunter-500)" }}
-                      >
-                        {opp.solicitationNumber || "—"}
-                      </td>
                       <td className="px-4 py-3">
                         <NoticeTypeBadge type={opp.noticeType} />
-                      </td>
-                      <td
-                        className="px-4 py-3 text-xs"
-                        style={{ color: "var(--hunter-700)" }}
-                        title={NAICS_LABELS[opp.naicsCode] || opp.naicsCode}
-                      >
-                        {opp.naicsCode || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <SetAsideBadge type={opp.setAsideType} />
                       </td>
                       <td
                         className="px-4 py-3 text-xs max-w-[140px] truncate"
@@ -388,6 +459,26 @@ function DeadlineBadge({ deadline, days }: { deadline: string | null; days: numb
   );
 }
 
+function FitBadge({ fit }: { fit: OpportunityFit }) {
+  if (fit.level === "low") {
+    return <span className="text-xs" style={{ color: "var(--cream-400)" }}>—</span>;
+  }
+
+  const strong = fit.level === "strong";
+  return (
+    <span
+      className="inline-flex whitespace-nowrap rounded px-2 py-1 text-xs font-semibold"
+      style={{
+        background: strong ? "#dcfce7" : "#fef3c7",
+        color: strong ? "#166534" : "#92400e",
+      }}
+      title={`${fit.score}/100`}
+    >
+      {strong ? "Strong fit" : "Possible fit"}
+    </span>
+  );
+}
+
 function NoticeTypeBadge({ type }: { type: string }) {
   const styles: Record<string, { bg: string; text: string }> = {
     Solicitation: { bg: "var(--hunter-100)", text: "var(--hunter-700)" },
@@ -406,38 +497,6 @@ function NoticeTypeBadge({ type }: { type: string }) {
   );
 }
 
-function SetAsideBadge({ type }: { type: string | null }) {
-  if (!type) {
-    return (
-      <span
-        className="inline-block px-2 py-0.5 rounded text-xs"
-        style={{ color: "var(--cream-400)" }}
-      >
-        Full & Open
-      </span>
-    );
-  }
-
-  const short =
-    type.length > 20
-      ? type
-          .replace("Total Small Business Set-Aside", "Small Biz")
-          .replace("Service-Disabled Veteran-Owned Small Business", "SDVOSB")
-          .replace("Set-Aside", "")
-          .trim()
-      : type;
-
-  return (
-    <span
-      className="inline-block px-2 py-0.5 rounded text-xs font-medium"
-      style={{ background: "#ede9fe", color: "#5b21b6" }}
-      title={type}
-    >
-      {short}
-    </span>
-  );
-}
-
 function OpportunityDetail({
   opp,
   onClose,
@@ -446,6 +505,7 @@ function OpportunityDetail({
   onClose: () => void;
 }) {
   const days = daysUntilDeadline(opp.responseDeadline);
+  const fit = scoreOpportunityFit(opp);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -481,6 +541,29 @@ function OpportunityDetail({
           >
             View Full Solicitation & Documents on SAM.gov →
           </a>
+
+          <div
+            className="rounded-lg border p-4"
+            style={{
+              background: fit.level === "strong" ? "#f0fdf4" : fit.level === "possible" ? "#fffbeb" : "white",
+              borderColor: fit.level === "strong" ? "#bbf7d0" : fit.level === "possible" ? "#fde68a" : "var(--cream-300)",
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold" style={{ color: "var(--hunter-700)" }}>
+                Profile fit
+              </div>
+              <FitBadge fit={fit} />
+            </div>
+            <div className="mt-2 text-xs font-medium" style={{ color: "var(--cream-400)" }}>
+              Score {fit.score}/100
+            </div>
+            <ul className="mt-2 space-y-1 text-sm" style={{ color: "var(--hunter-600)" }}>
+              {fit.reasons.map((reason) => (
+                <li key={reason}>• {reason}</li>
+              ))}
+            </ul>
+          </div>
 
           {opp.responseDeadline && (
             <div
@@ -555,7 +638,6 @@ function OpportunityDetail({
             <Field label="Notice Type" value={opp.noticeType} />
             <Field label="NAICS" value={opp.naicsCode ? `${opp.naicsCode} - ${NAICS_LABELS[opp.naicsCode] || ""}` : null} />
             <Field label="PSC Code" value={opp.pscCode} />
-            <Field label="Set-Aside" value={opp.setAsideType || "Full & Open"} />
             <Field label="Department" value={opp.department} />
             <Field label="Contracting Office" value={opp.contractingOffice} />
             <Field

@@ -8,7 +8,7 @@ const outPath = path.join(outDir, "opportunities.json");
 
 const BASE_URL = "https://api.sam.gov/opportunities/v2/search";
 const NOTICE_TYPES = "p,o,k,r";
-const DEFAULT_MAX_REQUESTS = 9;
+const MAX_REQUESTS = 9;
 const DEFAULT_LOOKBACK_DAYS = 14;
 const PAGE_LIMIT = 1000;
 const FOOD_CLASSIFICATION_CODE = "89";
@@ -105,6 +105,22 @@ function normalizeDateString(value) {
   return String(value).split(" ")[0] || null;
 }
 
+function sanitizeSamString(value) {
+  return value.replace(/([?&]api_key=)[^&\s]+/gi, "$1[redacted]");
+}
+
+export function sanitizeSamData(value) {
+  if (Array.isArray(value)) return value.map(sanitizeSamData);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key.toLowerCase() !== "api_key")
+        .map(([key, item]) => [key, sanitizeSamData(item)])
+    );
+  }
+  return typeof value === "string" ? sanitizeSamString(value) : value;
+}
+
 export function normalizeOpportunity(raw) {
   const pop = raw.placeOfPerformance || {};
   const office = raw.officeAddress || {};
@@ -132,25 +148,12 @@ export function normalizeOpportunity(raw) {
     samUrl: raw.uiLink && raw.uiLink !== "null" ? raw.uiLink : `https://sam.gov/opp/${noticeId}/view`,
     archiveDate: normalizeDateString(raw.archiveDate),
     active: raw.active || null,
+    sourceData: sanitizeSamData(raw),
   };
 }
 
-function parseComparableDate(value) {
-  if (!value) return null;
-  const date = parseDateInput(String(value).split("T")[0].split(" ")[0]);
-  return date && !Number.isNaN(date.getTime()) ? date : null;
-}
-
-export function isFutureRelevant(opportunity, now = new Date()) {
+export function isFutureRelevant(opportunity) {
   if (opportunity.active && String(opportunity.active).toLowerCase() === "no") return false;
-
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const archiveDate = parseComparableDate(opportunity.archiveDate);
-  if (archiveDate && archiveDate < today) return false;
-
-  const deadline = parseComparableDate(opportunity.responseDeadline);
-  if (deadline && deadline < today) return false;
-
   return true;
 }
 
@@ -170,7 +173,13 @@ export function mergeOpportunities(existing, fetched, now = new Date()) {
   });
 }
 
-export function buildSearchUrl({ apiKey, offset, dateRange, limit = PAGE_LIMIT }) {
+export function buildSearchUrl({
+  apiKey,
+  offset,
+  dateRange,
+  limit = PAGE_LIMIT,
+  classificationCode = FOOD_CLASSIFICATION_CODE,
+}) {
   const url = new URL(BASE_URL);
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("ptype", NOTICE_TYPES);
@@ -179,12 +188,12 @@ export function buildSearchUrl({ apiKey, offset, dateRange, limit = PAGE_LIMIT }
   url.searchParams.set("postedTo", dateRange.postedTo);
   url.searchParams.set("limit", String(limit));
   url.searchParams.set("offset", String(offset));
-  url.searchParams.set("ccode", FOOD_CLASSIFICATION_CODE);
+  url.searchParams.set("ccode", classificationCode);
   return url;
 }
 
-async function fetchPage({ apiKey, offset, dateRange, fetchImpl = fetch }) {
-  const url = buildSearchUrl({ apiKey, offset, dateRange });
+async function fetchPage({ apiKey, offset, dateRange, classificationCode, fetchImpl = fetch }) {
+  const url = buildSearchUrl({ apiKey, offset, dateRange, classificationCode });
   const res = await fetchImpl(url.toString());
   if (!res.ok) {
     const text = await res.text();
@@ -195,18 +204,20 @@ async function fetchPage({ apiKey, offset, dateRange, fetchImpl = fetch }) {
 
 export async function fetchOpportunities({
   apiKey,
-  maxRequests = DEFAULT_MAX_REQUESTS,
+  maxRequests = MAX_REQUESTS,
   dateRange,
+  classificationCode = FOOD_CLASSIFICATION_CODE,
   fetchImpl = fetch,
 } = {}) {
   if (!apiKey) throw new Error("SAM_GOV_API_KEY is required");
 
+  const requestBudget = Math.min(parsePositiveInt(maxRequests, MAX_REQUESTS), MAX_REQUESTS);
   const opportunities = [];
   let requestCount = 0;
   let totalRecords = null;
 
-  for (let offset = 0; requestCount < maxRequests; offset += 1) {
-    const data = await fetchPage({ apiKey, offset, dateRange, fetchImpl });
+  for (let offset = 0; requestCount < requestBudget; offset += 1) {
+    const data = await fetchPage({ apiKey, offset, dateRange, classificationCode, fetchImpl });
     requestCount += 1;
 
     totalRecords = Number(data.totalRecords || 0);
@@ -240,12 +251,19 @@ export async function run({ env = process.env, outputPath = outPath, fetchImpl =
     throw new Error("SAM_GOV_API_KEY is required (set in environment or GitHub Actions secret)");
   }
 
-  const maxRequests = parsePositiveInt(env.SAM_MAX_REQUESTS, DEFAULT_MAX_REQUESTS);
+  const maxRequests = Math.min(parsePositiveInt(env.SAM_MAX_REQUESTS, MAX_REQUESTS), MAX_REQUESTS);
+  const classificationCode = env.SAM_CLASSIFICATION_CODE || FOOD_CLASSIFICATION_CODE;
   const dateRange = getDateRange(env, now);
   let fetched;
 
   try {
-    fetched = await fetchOpportunities({ apiKey, maxRequests, dateRange, fetchImpl });
+    fetched = await fetchOpportunities({
+      apiKey,
+      maxRequests,
+      dateRange,
+      classificationCode,
+      fetchImpl,
+    });
   } catch (err) {
     if (existing.opportunities.length > 0) {
       console.warn(`SAM.gov fetch failed; keeping existing opportunities.json. ${err.message}`);
@@ -266,7 +284,7 @@ export async function run({ env = process.env, outputPath = outPath, fetchImpl =
       totalCount: opportunities.length,
       source: "sam.gov",
       query: {
-        ccode: FOOD_CLASSIFICATION_CODE,
+        ccode: classificationCode,
         ptype: NOTICE_TYPES,
         status: "active",
         postedFrom: dateRange.postedFrom,

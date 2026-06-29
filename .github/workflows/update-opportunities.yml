@@ -27,6 +27,7 @@ jobs:
         run: node scripts/fetch-sam-opportunities.mjs
         env:
           SAM_GOV_API_KEY: ${{ secrets.SAM_GOV_API_KEY }}
+          SAM_MAX_REQUESTS: 9
 
       - name: Commit and push if changed
         run: |

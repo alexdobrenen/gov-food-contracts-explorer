@@ -9,8 +9,10 @@ import {
   fetchOpportunities,
   formatSamDate,
   getDateRange,
+  isFutureRelevant,
   mergeOpportunities,
   run,
+  sanitizeSamData,
 } from "../fetch-sam-opportunities.mjs";
 
 test("formats SAM.gov dates as MM/dd/yyyy", () => {
@@ -42,6 +44,33 @@ test("builds documented broad food search params", () => {
   assert.equal(url.searchParams.has("noticeType"), false);
 });
 
+test("supports a specific four-digit classification code", () => {
+  const url = buildSearchUrl({
+    apiKey: "test-key",
+    offset: 0,
+    dateRange: { postedFrom: "06/29/2025", postedTo: "06/28/2026" },
+    classificationCode: "8915",
+  });
+
+  assert.equal(url.searchParams.get("ccode"), "8915");
+});
+
+test("preserves source fields without leaking API keys", () => {
+  const source = {
+    noticeId: "notice-1",
+    resourceLinks: ["https://api.sam.gov/file?id=1&api_key=secret-value"],
+    links: [{ href: "https://api.sam.gov/opp?api_key=secret-value&noticeid=notice-1" }],
+    nested: { award: { amount: 1250 }, api_key: "secret-value" },
+  };
+
+  assert.deepEqual(sanitizeSamData(source), {
+    noticeId: "notice-1",
+    resourceLinks: ["https://api.sam.gov/file?id=1&api_key=[redacted]"],
+    links: [{ href: "https://api.sam.gov/opp?api_key=[redacted]&noticeid=notice-1" }],
+    nested: { award: { amount: 1250 } },
+  });
+});
+
 test("never exceeds max request budget and marks truncation", async () => {
   const urls = [];
   const fetchImpl = async (url) => {
@@ -70,6 +99,33 @@ test("never exceeds max request budget and marks truncation", async () => {
   assert.equal(result.truncated, true);
 });
 
+test("hard caps the request budget at nine calls", async () => {
+  let requestCount = 0;
+  const fetchImpl = async () => {
+    requestCount += 1;
+    return {
+      ok: true,
+      async json() {
+        return {
+          totalRecords: 20_000,
+          opportunitiesData: [{ noticeId: `notice-${requestCount}`, title: "Food", active: "Yes" }],
+        };
+      },
+    };
+  };
+
+  const result = await fetchOpportunities({
+    apiKey: "test-key",
+    maxRequests: 100,
+    dateRange: { postedFrom: "06/14/2026", postedTo: "06/28/2026" },
+    fetchImpl,
+  });
+
+  assert.equal(requestCount, 9);
+  assert.equal(result.requestCount, 9);
+  assert.equal(result.truncated, true);
+});
+
 test("merges fetched notices into existing data by noticeId", () => {
   const existing = [
     { noticeId: "keep", title: "Old", active: "Yes", responseDeadline: "2026-07-01" },
@@ -83,6 +139,22 @@ test("merges fetched notices into existing data by noticeId", () => {
   const merged = mergeOpportunities(existing, fetched, new Date(2026, 5, 28));
   assert.equal(merged.length, 3);
   assert.equal(merged.find((item) => item.noticeId === "replace").title, "New");
+});
+
+test("retains opportunities with past or missing deadline and archive dates", () => {
+  const now = new Date(2026, 5, 28);
+
+  assert.equal(isFutureRelevant({
+    active: "Yes",
+    responseDeadline: "2025-01-01",
+    archiveDate: "2025-02-01",
+  }, now), true);
+  assert.equal(isFutureRelevant({
+    active: "Yes",
+    responseDeadline: null,
+    archiveDate: null,
+  }, now), true);
+  assert.equal(isFutureRelevant({ active: "No" }, now), false);
 });
 
 test("preserves existing JSON when every API call fails before results", async () => {
