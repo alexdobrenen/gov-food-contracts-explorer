@@ -54,10 +54,10 @@ export function OpenOpportunities() {
   const [naicsFilter, setNaicsFilter] = useState<string[]>([]);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
-  const [showMatchesOnly, setShowMatchesOnly] = useState(false);
+  const [showMatchesOnly, setShowMatchesOnly] = useState(true);
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<SortKey>("responseDeadline");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedOpp, setSelectedOpp] = useState<SamOpportunity | null>(null);
 
   const stats = useMemo(() => getOpportunityStats(), []);
